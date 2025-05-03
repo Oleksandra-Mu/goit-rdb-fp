@@ -1,0 +1,101 @@
+1
+CREATE SCHEMA pandemic;
+
+2
+use pandemic;
+
+CREATE TABLE countries (
+id INT auto_increment primary key,
+country varchar(255) not null,
+country_code varchar(50) not null);
+
+INSERT into countries (country, country_code)
+SELECT DISTINCT Entity, Code FROM infectious_cases;
+
+ALTER TABLE infectious_cases
+ADD COLUMN country_id INT not null;
+
+SET SQL_SAFE_UPDATES = 0;
+UPDATE infectious_cases
+JOIN countries ON infectious_cases.Code = countries.country_code
+SET infectious_cases.country_id = countries.id
+WHERE infectious_cases.country_id IS NOT NULL;
+SET SQL_SAFE_UPDATES = 1;
+
+ALTER TABLE infectious_cases
+DROP COLUMN Entity, 
+DROP COLUMN Code;
+
+ALTER TABLE infectious_cases
+ADD foreign key (country_id) REFERENCES countries(id);
+
+SELECT COUNT(*) FROM infectious_cases
+
+3
+SELECT temp.country_id
+,AVG(temp.Number_rabies) as avg_rabies
+,MIN(temp.Number_rabies) as min_rabies
+,MAX(temp.Number_rabies) as max_rabies
+,SUM(temp.Number_rabies) as total_rabies 
+from 
+(SELECT * FROM infectious_cases 
+WHERE Number_rabies <> '' AND Number_rabies IS NOT NULL) AS temp
+GROUP BY country_id
+ORDER BY avg_rabies DESC
+LIMIT 10;
+
+4
+ALTER TABLE infectious_cases
+ADD COLUMN year_date DATE,
+ADD COLUMN cur_date DATE,
+ADD COLUMN year_diff INT;
+
+SET SQL_SAFE_UPDATES = 0;
+UPDATE infectious_cases
+SET year_date = makedate(year, 1);
+UPDATE infectious_cases
+SET cur_date = CURDATE();
+
+UPDATE infectious_cases
+SET year_diff = TIMESTAMPDIFF(YEAR, year_date, cur_date)
+WHERE year_date IS NOT NULL;
+SET SQL_SAFE_UPDATES = 1;
+
+5
+DROP function if exists CalculateYearDiff;
+DELIMITER //
+
+CREATE FUNCTION CalculateYearDiff(input_year INT)
+RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE year_date DATE;
+    DECLARE year_diff INT;
+    
+    IF input_year IS NULL OR input_year < 1000 OR input_year > curdate() THEN
+        RETURN NULL;
+    END IF;
+    
+    SET year_date = MAKEDATE(input_year, 1);
+    
+    SET year_diff = TIMESTAMPDIFF(YEAR, year_date, CURDATE());
+    IF year_diff < 0 THEN
+        RETURN 0;
+    END IF;
+    
+    RETURN year_diff;
+END //
+
+DELIMITER ;
+
+ALTER TABLE infectious_cases
+ADD COLUMN year_diff INT;
+
+SET SQL_SAFE_UPDATES = 0;
+
+UPDATE infectious_cases
+SET year_diff = CalculateYearDiff(Year)
+WHERE Year IS NOT NULL;
+
+SET SQL_SAFE_UPDATES = 1;
+
